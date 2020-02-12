@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #include <linux/pm_qos.h>
 
 static inline void device_pm_init_common(struct device *dev)
@@ -40,20 +41,15 @@ extern void dev_pm_disable_wake_irq_check(struct device *dev);
 
 #ifdef CONFIG_PM_SLEEP
 
-extern int device_wakeup_attach_irq(struct device *dev,
-				    struct wake_irq *wakeirq);
+extern void device_wakeup_attach_irq(struct device *dev, struct wake_irq *wakeirq);
 extern void device_wakeup_detach_irq(struct device *dev);
 extern void device_wakeup_arm_wake_irqs(void);
 extern void device_wakeup_disarm_wake_irqs(void);
 
 #else
 
-static inline int
-device_wakeup_attach_irq(struct device *dev,
-			 struct wake_irq *wakeirq)
-{
-	return 0;
-}
+static inline void device_wakeup_attach_irq(struct device *dev,
+					    struct wake_irq *wakeirq) {}
 
 static inline void device_wakeup_detach_irq(struct device *dev)
 {
@@ -144,6 +140,11 @@ extern void device_pm_move_after(struct device *, struct device *);
 extern void device_pm_move_last(struct device *);
 extern void device_pm_check_callbacks(struct device *dev);
 
+static inline bool device_pm_initialized(struct device *dev)
+{
+	return dev->power.in_dpm_list;
+}
+
 #else /* !CONFIG_PM_SLEEP */
 
 static inline void device_pm_sleep_init(struct device *dev) {}
@@ -162,6 +163,11 @@ static inline void device_pm_move_after(struct device *deva,
 static inline void device_pm_move_last(struct device *dev) {}
 
 static inline void device_pm_check_callbacks(struct device *dev) {}
+
+static inline bool device_pm_initialized(struct device *dev)
+{
+	return device_is_registered(dev);
+}
 
 #endif /* !CONFIG_PM_SLEEP */
 

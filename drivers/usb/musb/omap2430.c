@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (C) 2005-2007 by Texas Instruments
  * Some code has been taken from tusb6010.c
@@ -6,23 +7,6 @@
  * Tony Lindgren <tony@atomide.com>
  *
  * This file is part of the Inventra Controller Driver for Linux.
- *
- * The Inventra Controller Driver for Linux is free software; you
- * can redistribute it and/or modify it under the terms of the GNU
- * General Public License version 2 as published by the Free Software
- * Foundation.
- *
- * The Inventra Controller Driver for Linux is distributed in
- * the hope that it will be useful, but WITHOUT ANY WARRANTY;
- * without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public
- * License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with The Inventra Controller Driver for Linux ; if not,
- * write to the Free Software Foundation, Inc., 59 Temple Place,
- * Suite 330, Boston, MA  02111-1307  USA
- *
  */
 #include <linux/module.h>
 #include <linux/kernel.h>
@@ -277,12 +261,12 @@ static int omap2430_musb_init(struct musb *musb)
 		if (status == -ENXIO)
 			return status;
 
-		pr_err("HS USB OTG: no transceiver configured\n");
+		dev_dbg(dev, "HS USB OTG: no transceiver configured\n");
 		return -EPROBE_DEFER;
 	}
 
 	if (IS_ERR(musb->phy)) {
-		pr_err("HS USB OTG: no PHY configured\n");
+		dev_err(dev, "HS USB OTG: no PHY configured\n");
 		return PTR_ERR(musb->phy);
 	}
 	musb->isr = omap2430_musb_interrupt;
@@ -301,7 +285,7 @@ static int omap2430_musb_init(struct musb *musb)
 
 	musb_writel(musb->mregs, OTG_INTERFSEL, l);
 
-	pr_debug("HS USB OTG: revision 0x%x, sysconfig 0x%02x, "
+	dev_dbg(dev, "HS USB OTG: revision 0x%x, sysconfig 0x%02x, "
 			"sysstatus 0x%x, intrfsel 0x%x, simenable  0x%x\n",
 			musb_readl(musb->mregs, OTG_REVISION),
 			musb_readl(musb->mregs, OTG_SYSCONFIG),
@@ -575,7 +559,7 @@ static int omap2430_runtime_resume(struct device *dev)
 	return 0;
 }
 
-static struct dev_pm_ops omap2430_pm_ops = {
+static const struct dev_pm_ops omap2430_pm_ops = {
 	.runtime_suspend = omap2430_runtime_suspend,
 	.runtime_resume = omap2430_runtime_resume,
 };
