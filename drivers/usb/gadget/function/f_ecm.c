@@ -621,8 +621,12 @@ static void ecm_disable(struct usb_function *f)
 
 	DBG(cdev, "ecm deactivated\n");
 
-	if (ecm->port.in_ep->enabled)
+	if (ecm->port.in_ep->enabled) {
 		gether_disconnect(&ecm->port);
+	} else {
+		ecm->port.in_ep->desc = NULL;
+		ecm->port.out_ep->desc = NULL;
+	}
 
 	usb_ep_disable(ecm->notify);
 	ecm->notify->desc = NULL;
@@ -704,6 +708,8 @@ ecm_bind(struct usb_configuration *c, struct usb_function *f)
 			return status;
 		ecm_opts->bound = true;
 	}
+
+	ecm_string_defs[1].s = ecm->ethaddr;
 
 	us = usb_gstrings_attach(cdev, ecm_strings,
 				 ARRAY_SIZE(ecm_string_defs));
@@ -928,7 +934,6 @@ static struct usb_function *ecm_alloc(struct usb_function_instance *fi)
 		mutex_unlock(&opts->lock);
 		return ERR_PTR(-EINVAL);
 	}
-	ecm_string_defs[1].s = ecm->ethaddr;
 
 	ecm->port.ioport = netdev_priv(opts->net);
 	mutex_unlock(&opts->lock);

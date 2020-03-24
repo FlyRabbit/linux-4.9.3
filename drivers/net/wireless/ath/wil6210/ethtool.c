@@ -1,17 +1,7 @@
+// SPDX-License-Identifier: ISC
 /*
  * Copyright (c) 2014,2017 Qualcomm Atheros, Inc.
- *
- * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
- *
- * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
- * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
- * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
- * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
- * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
- * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ * Copyright (c) 2018, The Linux Foundation. All rights reserved.
  */
 
 #include <linux/etherdevice.h>
@@ -74,12 +64,13 @@ static int wil_ethtoolops_set_coalesce(struct net_device *ndev,
 				       struct ethtool_coalesce *cp)
 {
 	struct wil6210_priv *wil = ndev_to_wil(ndev);
+	struct wireless_dev *wdev = ndev->ieee80211_ptr;
 	int ret;
 
 	wil_dbg_misc(wil, "ethtoolops_set_coalesce: rx %d usec, tx %d usec\n",
 		     cp->rx_coalesce_usecs, cp->tx_coalesce_usecs);
 
-	if (wil->wdev->iftype == NL80211_IFTYPE_MONITOR) {
+	if (wdev->iftype == NL80211_IFTYPE_MONITOR) {
 		wil_dbg_misc(wil, "No IRQ coalescing in monitor mode\n");
 		return -EINVAL;
 	}
@@ -99,7 +90,7 @@ static int wil_ethtoolops_set_coalesce(struct net_device *ndev,
 	if (ret < 0)
 		return ret;
 
-	wil_configure_interrupt_moderation(wil);
+	wil->txrx_ops.configure_interrupt_moderation(wil);
 
 	wil_pm_runtime_put(wil);
 

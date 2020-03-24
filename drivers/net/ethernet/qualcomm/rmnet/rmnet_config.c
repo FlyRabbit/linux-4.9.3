@@ -1,16 +1,7 @@
-/* Copyright (c) 2013-2017, The Linux Foundation. All rights reserved.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 and
- * only version 2 as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+// SPDX-License-Identifier: GPL-2.0-only
+/* Copyright (c) 2013-2018, The Linux Foundation. All rights reserved.
  *
  * RMNET configuration engine
- *
  */
 
 #include <net/sock.h>
@@ -43,6 +34,11 @@
 
 /* Local Definitions and Declarations */
 
+static const struct nla_policy rmnet_policy[IFLA_RMNET_MAX + 1] = {
+	[IFLA_RMNET_MUX_ID]	= { .type = NLA_U16 },
+	[IFLA_RMNET_FLAGS]	= { .len = sizeof(struct ifla_rmnet_flags) },
+};
+
 static int rmnet_is_real_dev_registered(const struct net_device *real_dev)
 {
 	return rcu_access_pointer(real_dev->rx_handler) == rmnet_rx_handler;
@@ -61,9 +57,9 @@ static int rmnet_unregister_real_device(struct net_device *real_dev,
 	if (port->nr_rmnet_devs)
 		return -EINVAL;
 
-	kfree(port);
-
 	netdev_rx_handler_unregister(real_dev);
+
+	kfree(port);
 
 	/* release reference on real_dev */
 	dev_put(real_dev);
@@ -131,7 +127,7 @@ static int rmnet_newlink(struct net *src_net, struct net_device *dev,
 			 struct nlattr *tb[], struct nlattr *data[],
 			 struct netlink_ext_ack *extack)
 {
-	u32 data_format = RMNET_INGRESS_FORMAT_DEAGGREGATION;
+	u32 data_format = RMNET_FLAGS_INGRESS_DEAGGREGATION;
 	struct net_device *real_dev;
 	int mode = RMNET_EPMODE_VND;
 	struct rmnet_endpoint *ep;
@@ -143,14 +139,14 @@ static int rmnet_newlink(struct net *src_net, struct net_device *dev,
 	if (!real_dev || !dev)
 		return -ENODEV;
 
-	if (!data[IFLA_VLAN_ID])
+	if (!data[IFLA_RMNET_MUX_ID])
 		return -EINVAL;
 
 	ep = kzalloc(sizeof(*ep), GFP_ATOMIC);
 	if (!ep)
 		return -ENOMEM;
 
-	mux_id = nla_get_u16(data[IFLA_VLAN_ID]);
+	mux_id = nla_get_u16(data[IFLA_RMNET_MUX_ID]);
 
 	err = rmnet_register_real_device(real_dev);
 	if (err)
@@ -165,10 +161,10 @@ static int rmnet_newlink(struct net *src_net, struct net_device *dev,
 
 	hlist_add_head_rcu(&ep->hlnode, &port->muxed_ep[mux_id]);
 
-	if (data[IFLA_VLAN_FLAGS]) {
-		struct ifla_vlan_flags *flags;
+	if (data[IFLA_RMNET_FLAGS]) {
+		struct ifla_rmnet_flags *flags;
 
-		flags = nla_data(data[IFLA_VLAN_FLAGS]);
+		flags = nla_data(data[IFLA_RMNET_FLAGS]);
 		data_format = flags->flags & flags->mask;
 	}
 
@@ -276,10 +272,10 @@ static int rmnet_rtnl_validate(struct nlattr *tb[], struct nlattr *data[],
 {
 	u16 mux_id;
 
-	if (!data || !data[IFLA_VLAN_ID])
+	if (!data || !data[IFLA_RMNET_MUX_ID])
 		return -EINVAL;
 
-	mux_id = nla_get_u16(data[IFLA_VLAN_ID]);
+	mux_id = nla_get_u16(data[IFLA_RMNET_MUX_ID]);
 	if (mux_id > (RMNET_MAX_LOGICAL_EP - 1))
 		return -ERANGE;
 
@@ -296,17 +292,22 @@ static int rmnet_changelink(struct net_device *dev, struct nlattr *tb[],
 	struct rmnet_port *port;
 	u16 mux_id;
 
+	if (!dev)
+		return -ENODEV;
+
 	real_dev = __dev_get_by_index(dev_net(dev),
 				      nla_get_u32(tb[IFLA_LINK]));
 
-	if (!real_dev || !dev || !rmnet_is_real_dev_registered(real_dev))
+	if (!real_dev || !rmnet_is_real_dev_registered(real_dev))
 		return -ENODEV;
 
 	port = rmnet_get_port_rtnl(real_dev);
 
-	if (data[IFLA_VLAN_ID]) {
-		mux_id = nla_get_u16(data[IFLA_VLAN_ID]);
+	if (data[IFLA_RMNET_MUX_ID]) {
+		mux_id = nla_get_u16(data[IFLA_RMNET_MUX_ID]);
 		ep = rmnet_get_endpoint(port, priv->mux_id);
+		if (!ep)
+			return -ENODEV;
 
 		hlist_del_init_rcu(&ep->hlnode);
 		hlist_add_head_rcu(&ep->hlnode, &port->muxed_ep[mux_id]);
@@ -315,10 +316,10 @@ static int rmnet_changelink(struct net_device *dev, struct nlattr *tb[],
 		priv->mux_id = mux_id;
 	}
 
-	if (data[IFLA_VLAN_FLAGS]) {
-		struct ifla_vlan_flags *flags;
+	if (data[IFLA_RMNET_FLAGS]) {
+		struct ifla_rmnet_flags *flags;
 
-		flags = nla_data(data[IFLA_VLAN_FLAGS]);
+		flags = nla_data(data[IFLA_RMNET_FLAGS]);
 		port->data_format = flags->flags & flags->mask;
 	}
 
@@ -327,13 +328,46 @@ static int rmnet_changelink(struct net_device *dev, struct nlattr *tb[],
 
 static size_t rmnet_get_size(const struct net_device *dev)
 {
-	return nla_total_size(2) /* IFLA_VLAN_ID */ +
-	       nla_total_size(sizeof(struct ifla_vlan_flags)); /* IFLA_VLAN_FLAGS */
+	return
+		/* IFLA_RMNET_MUX_ID */
+		nla_total_size(2) +
+		/* IFLA_RMNET_FLAGS */
+		nla_total_size(sizeof(struct ifla_rmnet_flags));
+}
+
+static int rmnet_fill_info(struct sk_buff *skb, const struct net_device *dev)
+{
+	struct rmnet_priv *priv = netdev_priv(dev);
+	struct net_device *real_dev;
+	struct ifla_rmnet_flags f;
+	struct rmnet_port *port;
+
+	real_dev = priv->real_dev;
+
+	if (nla_put_u16(skb, IFLA_RMNET_MUX_ID, priv->mux_id))
+		goto nla_put_failure;
+
+	if (rmnet_is_real_dev_registered(real_dev)) {
+		port = rmnet_get_port_rtnl(real_dev);
+		f.flags = port->data_format;
+	} else {
+		f.flags = 0;
+	}
+
+	f.mask  = ~0;
+
+	if (nla_put(skb, IFLA_RMNET_FLAGS, sizeof(f), &f))
+		goto nla_put_failure;
+
+	return 0;
+
+nla_put_failure:
+	return -EMSGSIZE;
 }
 
 struct rtnl_link_ops rmnet_link_ops __read_mostly = {
 	.kind		= "rmnet",
-	.maxtype	= __IFLA_VLAN_MAX,
+	.maxtype	= __IFLA_RMNET_MAX,
 	.priv_size	= sizeof(struct rmnet_priv),
 	.setup		= rmnet_vnd_setup,
 	.validate	= rmnet_rtnl_validate,
@@ -341,6 +375,8 @@ struct rtnl_link_ops rmnet_link_ops __read_mostly = {
 	.dellink	= rmnet_dellink,
 	.get_size	= rmnet_get_size,
 	.changelink     = rmnet_changelink,
+	.policy		= rmnet_policy,
+	.fill_info	= rmnet_fill_info,
 };
 
 /* Needs either rcu_read_lock() or rtnl lock */

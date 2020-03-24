@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /**
  * xhci-dbgtty.c - tty glue for xHCI debug capability
  *
@@ -138,14 +139,14 @@ xhci_dbc_alloc_requests(struct dbc_ep *dep, struct list_head *head,
 	struct dbc_request	*req;
 
 	for (i = 0; i < DBC_QUEUE_SIZE; i++) {
-		req = dbc_alloc_request(dep, GFP_ATOMIC);
+		req = dbc_alloc_request(dep, GFP_KERNEL);
 		if (!req)
 			break;
 
 		req->length = DBC_MAX_PACKET;
 		req->buf = kmalloc(req->length, GFP_KERNEL);
 		if (!req->buf) {
-			xhci_dbc_free_req(dep, req);
+			dbc_free_request(dep, req);
 			break;
 		}
 
@@ -320,9 +321,11 @@ int xhci_dbc_tty_register_driver(struct xhci_hcd *xhci)
 
 void xhci_dbc_tty_unregister_driver(void)
 {
-	tty_unregister_driver(dbc_tty_driver);
-	put_tty_driver(dbc_tty_driver);
-	dbc_tty_driver = NULL;
+	if (dbc_tty_driver) {
+		tty_unregister_driver(dbc_tty_driver);
+		put_tty_driver(dbc_tty_driver);
+		dbc_tty_driver = NULL;
+	}
 }
 
 static void dbc_rx_push(unsigned long _port)
@@ -447,9 +450,10 @@ int xhci_dbc_tty_register_device(struct xhci_hcd *xhci)
 	xhci_dbc_tty_init_port(xhci, port);
 	tty_dev = tty_port_register_device(&port->port,
 					   dbc_tty_driver, 0, NULL);
-	ret = IS_ERR_OR_NULL(tty_dev);
-	if (ret)
+	if (IS_ERR(tty_dev)) {
+		ret = PTR_ERR(tty_dev);
 		goto register_fail;
+	}
 
 	ret = kfifo_alloc(&port->write_fifo, DBC_WRITE_BUF_SIZE, GFP_KERNEL);
 	if (ret)
